@@ -1,10 +1,10 @@
-use std::{mem, fmt};
-use std::cmp::{PartialEq, Eq};
+use std::cmp::{Eq, PartialEq};
 use std::default::Default;
 use std::hash::{Hash, Hasher};
+use std::{fmt, mem};
 
-use crate::ops::{Operation, Commutative, Identity};
 use crate::maybe_owned::MaybeOwned;
+use crate::ops::{Commutative, Identity, Operation};
 
 /// This data structure allows range queries and single element modification.
 ///
@@ -70,10 +70,13 @@ use crate::maybe_owned::MaybeOwned;
 ///
 /// [1]: https://en.wikipedia.org/wiki/Range_minimum_query
 /// [`Add`]: ops/struct.Add.html
-pub struct SegmentPoint<N, O> where O: Operation<N> {
+pub struct SegmentPoint<N, O>
+where
+    O: Operation<N>,
+{
     buf: Vec<N>,
     n: usize,
-    op: O
+    op: O,
 }
 
 impl<N, O: Operation<N>> SegmentPoint<N, O> {
@@ -84,7 +87,10 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     /// See also the function [`build_noalloc`].
     ///
     /// [`build_noalloc`]: struct.SegmentPoint.html#method.build_noalloc
-    pub fn build(mut buf: Vec<N>, op: O) -> SegmentPoint<N, O> where N: Clone {
+    pub fn build(mut buf: Vec<N>, op: O) -> SegmentPoint<N, O>
+    where
+        N: Clone,
+    {
         let n = buf.len();
         buf.reserve_exact(n);
         for i in 0..n {
@@ -99,8 +105,11 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     pub fn modify(&mut self, mut p: usize, value: N) -> N {
         p += self.n;
         let res = mem::replace(&mut self.buf[p], value);
-        while { p >>= 1; p > 0 } {
-            self.buf[p] = self.op.combine(&self.buf[p<<1], &self.buf[p<<1|1]);
+        while {
+            p >>= 1;
+            p > 0
+        } {
+            self.buf[p] = self.op.combine(&self.buf[p << 1], &self.buf[p << 1 | 1]);
         }
         res
     }
@@ -115,31 +124,36 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     /// [`query_noiden`]: struct.SegmentPoint.html#method.query_noiden
     /// [`query_noclone`]: struct.SegmentPoint.html#method.query_noclone
     /// [1]: ops/trait.Commutative.html
-    pub fn query(&self, mut l: usize, mut r: usize) -> N
+    pub fn query(&self, mut l: usize, mut r: usize) -> (N, usize)
     where
-        O: Commutative<N> + Identity<N>
+        O: Commutative<N> + Identity<N>,
     {
         let mut res = self.op.identity();
-        l += self.n; r += self.n;
+        let mut count = 0;
+        l += self.n;
+        r += self.n;
         while l < r {
-            if l&1 == 1 {
+            if l & 1 == 1 {
                 res = self.op.combine_left(res, &self.buf[l]);
+                count += 1;
                 l += 1;
             }
-            if r&1 == 1 {
+            if r & 1 == 1 {
                 r -= 1;
                 res = self.op.combine_left(res, &self.buf[r]);
+                count += 1;
             }
-            l >>= 1; r >>= 1;
+            l >>= 1;
+            r >>= 1;
         }
-        res
+        (res, count)
     }
     /// Combine the value at `p` with `delta`.
     /// Uses `O(log(len))` time.
     #[inline(always)]
     pub fn compose(&mut self, p: usize, delta: &N)
     where
-        O: Commutative<N>
+        O: Commutative<N>,
     {
         self.compose_right(p, delta);
     }
@@ -148,8 +162,11 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     pub fn compose_left(&mut self, mut p: usize, delta: &N) {
         p += self.n;
         self.op.combine_mut2(delta, &mut self.buf[p]);
-        while { p >>= 1; p > 0 } {
-            self.buf[p] = self.op.combine(&self.buf[p<<1], &self.buf[p<<1|1]);
+        while {
+            p >>= 1;
+            p > 0
+        } {
+            self.buf[p] = self.op.combine(&self.buf[p << 1], &self.buf[p << 1 | 1]);
         }
     }
     /// Combine the value at `p` with `delta`, such that `delta` is the right argument.
@@ -157,8 +174,11 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     pub fn compose_right(&mut self, mut p: usize, delta: &N) {
         p += self.n;
         self.op.combine_mut(&mut self.buf[p], delta);
-        while { p >>= 1; p > 0 } {
-            self.buf[p] = self.op.combine(&self.buf[p<<1], &self.buf[p<<1|1]);
+        while {
+            p >>= 1;
+            p > 0
+        } {
+            self.buf[p] = self.op.combine(&self.buf[p << 1], &self.buf[p << 1 | 1]);
         }
     }
     /// View the values in this segment tree using a slice.  Uses `O(1)` time.
@@ -209,11 +229,13 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
             panic!("SegmentPoint::build_noalloc: odd size");
         }
         for i in (1..n).rev() {
-            let res = op.combine(&buf[i<<1], &buf[i<<1 | 1]);
+            let res = op.combine(&buf[i << 1], &buf[i << 1 | 1]);
             buf[i] = res;
         }
         SegmentPoint {
-            buf: buf, op: op, n: n
+            buf: buf,
+            op: op,
+            n: n,
         }
     }
 }
@@ -230,26 +252,31 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     ///
     /// [`query_noclone`]: struct.SegmentPoint.html#method.query_noclone
     /// [`query`]: struct.SegmentPoint.html#method.query
-    pub fn query_noiden(&self, mut l: usize, mut r: usize) -> N where N: Clone {
+    pub fn query_noiden(&self, mut l: usize, mut r: usize) -> N
+    where
+        N: Clone,
+    {
         let mut resl = None;
         let mut resr = None;
-        l += self.n; r += self.n;
+        l += self.n;
+        r += self.n;
         while l < r {
-            if l&1 == 1 {
+            if l & 1 == 1 {
                 resl = match resl {
                     None => Some(self.buf[l].clone()),
-                    Some(v) => Some(self.op.combine_left(v, &self.buf[l]))
+                    Some(v) => Some(self.op.combine_left(v, &self.buf[l])),
                 };
                 l += 1;
             }
-            if r&1 == 1 {
+            if r & 1 == 1 {
                 r -= 1;
                 resr = match resr {
                     None => Some(self.buf[r].clone()),
-                    Some(v) => Some(self.op.combine_right(&self.buf[r], v))
+                    Some(v) => Some(self.op.combine_right(&self.buf[r], v)),
                 }
             }
-            l >>= 1; r >>= 1;
+            l >>= 1;
+            r >>= 1;
         }
         match resl {
             None => match resr {
@@ -258,8 +285,8 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
             },
             Some(l) => match resr {
                 None => l,
-                Some(r) => self.op.combine_both(l, r)
-            }
+                Some(r) => self.op.combine_both(l, r),
+            },
         }
     }
     /// Like [`query_noiden`], except it doesn't clone.
@@ -277,29 +304,35 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
     pub fn query_noclone<'a>(&'a self, mut l: usize, mut r: usize) -> MaybeOwned<'a, N> {
         let mut resl = None;
         let mut resr = None;
-        l += self.n; r += self.n;
+        l += self.n;
+        r += self.n;
         while l < r {
-            if l&1 == 1 {
+            if l & 1 == 1 {
                 resl = match resl {
                     None => Some(MaybeOwned::Borrowed(&self.buf[l])),
-                    Some(MaybeOwned::Borrowed(ref v)) =>
-                        Some(MaybeOwned::Owned(self.op.combine(v, &self.buf[l]))),
-                    Some(MaybeOwned::Owned(v)) =>
-                        Some(MaybeOwned::Owned(self.op.combine_left(v, &self.buf[l]))),
+                    Some(MaybeOwned::Borrowed(ref v)) => {
+                        Some(MaybeOwned::Owned(self.op.combine(v, &self.buf[l])))
+                    }
+                    Some(MaybeOwned::Owned(v)) => {
+                        Some(MaybeOwned::Owned(self.op.combine_left(v, &self.buf[l])))
+                    }
                 };
                 l += 1;
             }
-            if r&1 == 1 {
+            if r & 1 == 1 {
                 r -= 1;
                 resr = match resr {
                     None => Some(MaybeOwned::Borrowed(&self.buf[r])),
-                    Some(MaybeOwned::Borrowed(ref v)) =>
-                        Some(MaybeOwned::Owned(self.op.combine(&self.buf[r], v))),
-                    Some(MaybeOwned::Owned(v)) =>
-                        Some(MaybeOwned::Owned(self.op.combine_right(&self.buf[r], v))),
+                    Some(MaybeOwned::Borrowed(ref v)) => {
+                        Some(MaybeOwned::Owned(self.op.combine(&self.buf[r], v)))
+                    }
+                    Some(MaybeOwned::Owned(v)) => {
+                        Some(MaybeOwned::Owned(self.op.combine_right(&self.buf[r], v)))
+                    }
                 }
             }
-            l >>= 1; r >>= 1;
+            l >>= 1;
+            r >>= 1;
         }
         match resl {
             None => match resr {
@@ -308,18 +341,14 @@ impl<N, O: Operation<N>> SegmentPoint<N, O> {
             },
             Some(MaybeOwned::Borrowed(ref l)) => match resr {
                 None => MaybeOwned::Borrowed(l),
-                Some(MaybeOwned::Borrowed(ref r)) =>
-                    MaybeOwned::Owned(self.op.combine(l, r)),
-                Some(MaybeOwned::Owned(r)) =>
-                    MaybeOwned::Owned(self.op.combine_right(l, r))
+                Some(MaybeOwned::Borrowed(ref r)) => MaybeOwned::Owned(self.op.combine(l, r)),
+                Some(MaybeOwned::Owned(r)) => MaybeOwned::Owned(self.op.combine_right(l, r)),
             },
             Some(MaybeOwned::Owned(l)) => match resr {
                 None => MaybeOwned::Owned(l),
-                Some(MaybeOwned::Borrowed(ref r)) =>
-                    MaybeOwned::Owned(self.op.combine_left(l, r)),
-                Some(MaybeOwned::Owned(r)) =>
-                    MaybeOwned::Owned(self.op.combine_both(l, r))
-            }
+                Some(MaybeOwned::Borrowed(ref r)) => MaybeOwned::Owned(self.op.combine_left(l, r)),
+                Some(MaybeOwned::Owned(r)) => MaybeOwned::Owned(self.op.combine_both(l, r)),
+            },
         }
     }
 }
@@ -328,7 +357,9 @@ impl<N: Clone, O: Operation<N> + Clone> Clone for SegmentPoint<N, O> {
     #[inline]
     fn clone(&self) -> SegmentPoint<N, O> {
         SegmentPoint {
-            buf: self.buf.clone(), n: self.n, op: self.op.clone()
+            buf: self.buf.clone(),
+            n: self.n,
+            op: self.op.clone(),
         }
     }
 }
@@ -348,11 +379,15 @@ impl<N: PartialEq, O: Operation<N> + PartialEq> PartialEq for SegmentPoint<N, O>
         self.op.ne(&other.op) && self.view().ne(other.view())
     }
 }
-impl<N: Eq, O: Operation<N> + Eq> Eq for SegmentPoint<N, O> { }
+impl<N: Eq, O: Operation<N> + Eq> Eq for SegmentPoint<N, O> {}
 impl<N, O: Operation<N> + Default> Default for SegmentPoint<N, O> {
     #[inline]
     fn default() -> SegmentPoint<N, O> {
-        SegmentPoint { buf: Vec::new(), n: 0, op: Default::default() }
+        SegmentPoint {
+            buf: Vec::new(),
+            n: 0,
+            op: Default::default(),
+        }
     }
 }
 impl<'a, N: 'a + Hash, O: Operation<N>> Hash for SegmentPoint<N, O> {
@@ -364,11 +399,11 @@ impl<'a, N: 'a + Hash, O: Operation<N>> Hash for SegmentPoint<N, O> {
 
 #[cfg(test)]
 mod tests {
-    use crate::SegmentPoint;
-    use crate::ops::*;
     use crate::maybe_owned::MaybeOwned;
-    use rand::prelude::*;
+    use crate::ops::*;
+    use crate::SegmentPoint;
     use rand::distributions::{Distribution, Standard};
+    use rand::prelude::*;
     use rand::seq::SliceRandom;
     use std::num::Wrapping;
 
@@ -376,7 +411,7 @@ mod tests {
     /// concatenation of every string.
     #[derive(PartialEq, Eq, Clone, Debug)]
     struct StrType {
-        value: String
+        value: String,
     }
     impl StrType {
         fn cat(list: &[StrType]) -> StrType {
@@ -387,24 +422,28 @@ mod tests {
             StrType { value: res }
         }
         fn sub(&self, i: usize, j: usize) -> StrType {
-            StrType { value: String::from(&self.value[4*i .. 4*j]) }
+            StrType {
+                value: String::from(&self.value[4 * i..4 * j]),
+            }
         }
     }
     impl Distribution<StrType> for Standard {
         fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> StrType {
-            let a = rng.gen_range('A' as u8, 'Z' as u8+1);
-            let b = rng.gen_range('A' as u8, 'Z' as u8+1);
-            let c = rng.gen_range('A' as u8, 'Z' as u8+1);
-            let d = rng.gen_range('A' as u8, 'Z' as u8+1);
+            let a = rng.gen_range('A' as u8, 'Z' as u8 + 1);
+            let b = rng.gen_range('A' as u8, 'Z' as u8 + 1);
+            let c = rng.gen_range('A' as u8, 'Z' as u8 + 1);
+            let d = rng.gen_range('A' as u8, 'Z' as u8 + 1);
             let bytes = [a, b, c, d];
             let utf8 = std::str::from_utf8(&bytes).unwrap();
-            StrType { value: String::from(utf8) }
+            StrType {
+                value: String::from(utf8),
+            }
         }
     }
     impl Operation<StrType> for Add {
         fn combine(&self, a: &StrType, b: &StrType) -> StrType {
             StrType {
-                value: a.value.clone() + b.value.as_str()
+                value: a.value.clone() + b.value.as_str(),
             }
         }
         fn combine_mut(&self, a: &mut StrType, b: &StrType) {
@@ -415,16 +454,19 @@ mod tests {
     #[test]
     fn segment_tree_build() {
         let mut rng = thread_rng();
-        let vals: Vec<Wrapping<i32>> = rng.sample_iter(&Standard)
-            .map(|i| Wrapping(i)).take(130).collect();
+        let vals: Vec<Wrapping<i32>> = rng
+            .sample_iter(&Standard)
+            .map(|i| Wrapping(i))
+            .take(130)
+            .collect();
         for i in 0..vals.len() {
             let buf: Vec<_> = vals[0..i].iter().cloned().collect();
             println!("{:?}", buf);
             let mut buf2 = vec![];
             let n = buf.len();
-            buf2.resize(2*n, Wrapping(0));
+            buf2.resize(2 * n, Wrapping(0));
             for i in 0..n {
-                buf2[n+i] = buf[i];
+                buf2[n + i] = buf[i];
             }
             let tree1 = SegmentPoint::build(buf, Add);
             let tree2 = SegmentPoint::build_noalloc(buf2, Add);
@@ -439,7 +481,7 @@ mod tests {
             println!("build_noalloc");
             println!("{:?}", buf2);
             assert_eq!(buf, buf2);
-            assert_eq!(buf.len(), 2*n);
+            assert_eq!(buf.len(), 2 * n);
         }
     }
     #[test]
@@ -453,7 +495,7 @@ mod tests {
             let n = buf.len();
             println!("n: {} tree.buf.len: {}", n, tree.buf.len());
             for i in 0..n {
-                for j in i+1..n+1 {
+                for j in i + 1..n + 1 {
                     println!("i: {}, j: {}", i, j);
                     assert_eq!(tree.query_noiden(i, j), sum.sub(i, j));
                     assert_eq!(tree.query_noclone(i, j), MaybeOwned::Owned(sum.sub(i, j)));
@@ -464,27 +506,30 @@ mod tests {
     #[test]
     fn segment_tree_query_commut() {
         let mut rng = thread_rng();
-        let vals: Vec<Wrapping<i32>> = rng.sample_iter(&Standard)
-            .map(|i| Wrapping(i)).take(130).collect();
+        let vals: Vec<Wrapping<i32>> = rng
+            .sample_iter(&Standard)
+            .map(|i| Wrapping(i))
+            .take(130)
+            .collect();
         for i in 0..vals.len() {
             let mut buf: Vec<_> = vals[0..i].iter().cloned().collect();
             let tree = SegmentPoint::build(buf.clone(), Add);
             assert_eq!(tree.view(), &buf[..]);
 
             for i in 1..buf.len() {
-                let prev = buf[i-1];
+                let prev = buf[i - 1];
                 buf[i] += prev;
             }
 
             let n = buf.len();
             println!("n: {} tree.buf.len: {}", n, tree.buf.len());
             for i in 0..n {
-                for j in i+1..n+1 {
+                for j in i + 1..n + 1 {
                     println!("i: {}, j: {}", i, j);
                     if i == 0 {
-                        assert_eq!(tree.query(i, j), buf[j-1]);
+                        assert_eq!(tree.query(i, j), buf[j - 1]);
                     } else {
-                        assert_eq!(tree.query(i, j), buf[j-1] - buf[i-1]);
+                        assert_eq!(tree.query(i, j), buf[j - 1] - buf[i - 1]);
                     }
                 }
             }
@@ -493,10 +538,16 @@ mod tests {
     #[test]
     fn segment_tree_modify() {
         let mut rng = thread_rng();
-        let vals1: Vec<Wrapping<i32>> = rng.sample_iter(&Standard)
-            .map(|i| Wrapping(i)).take(130).collect();
-        let vals2: Vec<Wrapping<i32>> = rng.sample_iter(&Standard)
-            .map(|i| Wrapping(i)).take(130).collect();
+        let vals1: Vec<Wrapping<i32>> = rng
+            .sample_iter(&Standard)
+            .map(|i| Wrapping(i))
+            .take(130)
+            .collect();
+        let vals2: Vec<Wrapping<i32>> = rng
+            .sample_iter(&Standard)
+            .map(|i| Wrapping(i))
+            .take(130)
+            .collect();
         for i in 0..vals1.len() {
             let mut order: Vec<_> = (0..i).collect();
             order.shuffle(&mut rng);
